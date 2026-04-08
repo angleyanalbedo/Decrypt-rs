@@ -2,10 +2,7 @@
 use fltk::{prelude::*, *};
 use std::fs;
 use std::io::{Read, Write};
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
 // Prevent the interface from refreshing too quickly.
 use std::time::Instant;
 // Sleeps threads for debugging
@@ -19,6 +16,7 @@ pub fn execute_decrypt(
     save_orig: bool,
     backup_orig: bool,
     ext_name: &str,
+    output_ext: &str,
     load_file_path: Vec<PathBuf>,
     load_dir_path: PathBuf,
     save_dir_path: PathBuf,
@@ -85,10 +83,11 @@ pub fn execute_decrypt(
             return;
         }
         if save_orig {
+            let dst = with_output_extension(iter, output_ext);
             print!("Processing file: {:?}\n", iter);
             if write_file(
                 iter,
-                &PathBuf::from(""),
+                &dst,
                 ext_name,
                 backup_orig,
                 save_orig,
@@ -110,9 +109,9 @@ pub fn execute_decrypt(
         } else {
             if deal_file {
                 let filename = iter.file_name().unwrap();
-                let dst = save_dir_path.join(filename);
+                let dst = with_output_extension(&save_dir_path.join(filename), output_ext);
                 print!("Processing file: {:?} -> {:?}\n", iter, dst);
-                if write_file(iter, &dst, ext_name,backup_orig, false, should_stop) {
+                if write_file(iter, &dst, ext_name, backup_orig, false, should_stop) {
                     processed += 1.0;
                 } else {
                     let pbar = widget.window.p_bar.clone();
@@ -131,7 +130,7 @@ pub fn execute_decrypt(
                 let in_dirpath = load_dir_path.to_str().unwrap();
                 let out_dirpath = save_dir_path.to_str().unwrap();
                 filepath = filepath.replace(in_dirpath, out_dirpath);
-                let dst = PathBuf::from(filepath);
+                let dst = with_output_extension(&PathBuf::from(filepath), output_ext);
                 print!("Processing file: {:?} -> {:?}\n", iter, dst);
                 if write_file(iter, &dst, ext_name, backup_orig, false, should_stop) {
                     processed += 1.0;
@@ -245,7 +244,14 @@ fn write_file(
         return false;
     }
 
-    if let Some(parent) = dst.parent() {
+    let target = if dst.as_os_str().is_empty() {
+        src.clone()
+    } else {
+        dst.clone()
+    };
+    let target_is_source = target == *src;
+
+    if let Some(parent) = target.parent() {
         if !parent.exists() {
             if let Err(e) = fs::create_dir_all(parent) {
                 eprintln!(
@@ -257,7 +263,7 @@ fn write_file(
         }
     }
 
-    let tmp = PathBuf::from(format!("{}.{}", dst.to_string_lossy(), ext_name));
+    let tmp = PathBuf::from(format!("{}.{}", target.to_string_lossy(), ext_name));
 
     // Using an alternative to buffered I/O.
     let mut buffer = [0u8; 1024 * 1024]; // 1 MiB Buffer
@@ -296,116 +302,62 @@ fn write_file(
         };
     }
 
-    #[cfg(windows)]
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
     if backup && save_original {
         let bak = PathBuf::from(format!("{}.bak", src.to_string_lossy()));
-        #[cfg(windows)]
-        let status = Command::new("cmd")
-            .creation_flags(CREATE_NO_WINDOW)
-            .args([
-                "/c",
-                "move",
-                "/y",
-                &src.to_string_lossy(),
-                &bak.to_string_lossy(),
-                "&&",
-                "move",
-                "/y",
-                &tmp.to_string_lossy(),
-                &src.to_string_lossy(),
-            ])
-            .status();
-        #[cfg(target_family = "unix")]
-        let status = Command::new("sh")
-            .args([
-                "-c",
-                format!("mv -f {:?} {:?} && mv -f {:?} {:?}", src, bak, tmp, src,).as_str(),
-            ])
-            .status();
-
-        match status {
-            Ok(exit_status) if !exit_status.success() => {
-                eprintln!("Failed to backup original file: {:?}", src);
-                return false;
-            }
-            Err(e) => {
-                eprintln!("Failed to backup original file: {:?}, error: {}", src, e);
-                return false;
-            }
-            _ => {}
+        if !move_file(src, &bak) {
+            eprintln!("Failed to backup original file: {:?}", src);
+            return false;
+        }
+        if !move_file(&tmp, &target) {
+            eprintln!("Failed to move temporary file to destination: {:?}", target);
+            return false;
         }
     } else if !save_original && (dst.to_string_lossy().len() > 0) {
-        #[cfg(windows)]
-        let status = Command::new("cmd")
-            .creation_flags(CREATE_NO_WINDOW)
-            .args([
-                "/c",
-                "move",
-                "/y",
-                &tmp.to_string_lossy(),
-                &dst.to_string_lossy(),
-            ])
-            .status();
-        #[cfg(target_family = "unix")]
-        let status = Command::new("sh")
-            .args([
-                "-c",
-                format!("mv -f {:?} {:?}", tmp, dst,).as_str(),
-            ])
-            .status();
-
-        match status {
-            Ok(exit_status) if !exit_status.success() => {
-                eprintln!("Failed to move temporary file to destination: {:?}", dst);
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "Failed to move temporary file to destination: {:?}, error: {}",
-                    dst, e
-                );
-                return false;
-            }
-            _ => {}
+        if !move_file(&tmp, &target) {
+            eprintln!("Failed to move temporary file to destination: {:?}", target);
+            return false;
         }
     } else {
-        #[cfg(windows)]
-        let status = Command::new("cmd")
-            .creation_flags(CREATE_NO_WINDOW)
-            .args([
-                "/c",
-                "move",
-                "/y",
-                &tmp.to_string_lossy(),
-                &src.to_string_lossy(),
-            ])
-            .status();
-        #[cfg(target_family = "unix")]
-        let status = Command::new("sh")
-            .args([
-                "-c",
-                format!("mv -f {:?} {:?}", tmp, src,).as_str(),
-            ])
-            .status();
-
-        match status {
-            Ok(exit_status) if !exit_status.success() => {
-                eprintln!("Failed to move temporary file to source: {:?}", src);
-                return false;
-            }
-            Err(e) => {
+        if !move_file(&tmp, &target) {
+            eprintln!("Failed to move temporary file to source: {:?}", target);
+            return false;
+        }
+        if save_original && !target_is_source {
+            if let Err(e) = fs::remove_file(src) {
                 eprintln!(
-                    "Failed to move temporary file to source: {:?}, error: {}",
+                    "Failed to remove source file after renaming output: {:?}, error: {}",
                     src, e
                 );
                 return false;
             }
-            _ => {}
         }
     }
 
     true
+}
+
+fn with_output_extension(path: &PathBuf, output_ext: &str) -> PathBuf {
+    let ext = output_ext.trim().trim_start_matches('.');
+    if ext.is_empty() {
+        path.clone()
+    } else {
+        path.with_extension(ext)
+    }
+}
+
+fn move_file(src: &PathBuf, dst: &PathBuf) -> bool {
+    if let Some(parent) = dst.parent() {
+        if !parent.exists() && fs::create_dir_all(parent).is_err() {
+            return false;
+        }
+    }
+    if fs::rename(src, dst).is_ok() {
+        return true;
+    }
+    match fs::copy(src, dst) {
+        Ok(_) => fs::remove_file(src).is_ok(),
+        Err(_) => false,
+    }
 }
 
 fn get_children_files(dir: &PathBuf, recursive: bool, should_stop: &bool) -> Option<Vec<PathBuf>> {

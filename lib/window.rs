@@ -31,6 +31,13 @@ fn show_window() {
                 return;
             }
         }
+        if ui.cb_suffix_name.value() {
+            if ui.en_suffix_name.value().trim().trim_start_matches('.').is_empty() {
+                fltk::dialog::alert_default("输出后缀不能为空!");
+                println!("Output suffix is empty!");
+                return;
+            }
+        }
         let mut w = w_clone.lock().unwrap();
         if !w.on_process {
             w.on_process = true;
@@ -48,6 +55,11 @@ fn show_window() {
             } else {
                 "cui".to_string()
             };
+            let output_ext = if ui.cb_suffix_name.value() {
+                ui.en_suffix_name.value()
+            } else {
+                String::new()
+            };
             /* let thread_join_handle = */
             thread::spawn(move || {
                 let mut w = w_thread.lock().unwrap();
@@ -57,6 +69,7 @@ fn show_window() {
                     b_save_orig,
                     b_backup,
                     ext_name.as_str(),
+                    output_ext.as_str(),
                     vec_files,
                     path_deal_dir,
                     path_save_other,

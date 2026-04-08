@@ -34,7 +34,7 @@ class MainWindow {open
   } {
     Fl_Window main_window {
       label {Decrypt Online Tool} open
-      xywh {716 69 500 290} type Double non_modal visible
+      xywh {716 69 500 315} type Double non_modal visible
     } {
       Fl_Text_Display {} {
         label {本程序不验证生成文件的正确性,请确保您有打开密文的权限!}
@@ -73,7 +73,7 @@ class MainWindow {open
       }
       Fl_Group {} {
         label {目标文件} open
-        xywh {5 125 490 100} box THIN_DOWN_BOX align 21
+        xywh {5 125 490 125} box THIN_DOWN_BOX align 21
       } {
         Fl_Round_Button rb_save_orig {
           label {保存在原位置}
@@ -101,21 +101,28 @@ class MainWindow {open
         Fl_Input en_ext_name {
           tooltip {解密文件的中间拓展名，默认为cui} xywh {155 195 335 25}
         }
+        Fl_Check_Button cb_suffix_name {
+          label {输出后缀}
+          xywh {5 220 140 25} down_box DOWN_BOX
+        }
+        Fl_Input en_suffix_name {
+          tooltip {解密后输出文件后缀，不含点，例如docx} xywh {155 220 335 25}
+        }
       }
       Fl_Progress p_bar {
-        xywh {5 230 400 25}
+        xywh {5 255 400 25}
       }
       Fl_Button bn_execute {
         label {保存明文(&S)}
-        xywh {405 230 90 25}
+        xywh {405 255 90 25}
       }
       Fl_Button bn_link {
         label {免责声明}
-        xywh {5 260 100 25} box NO_BOX labelcolor 4
+        xywh {5 285 100 25} box NO_BOX labelcolor 4
       }
       Fl_Button bn_about {
         label {关于本程序...}
-        xywh {395 260 100 25} box NO_BOX labelcolor 4
+        xywh {395 285 100 25} box NO_BOX labelcolor 4
       }
     }
   }
