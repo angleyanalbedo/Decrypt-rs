@@ -24,15 +24,14 @@ jobs:
         run: cargo build --release
 
       - name: Package artifacts
-        shell: bash
+        shell: pwsh
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          mkdir -p release
-          cp target/release/decrypt.exe release/
-          cp target/release/decrypt.dll release/
-          cp target/release/launcher.exe release/
-          cd release
-          zip -r "Decrypt-v${VERSION}.zip" .
+          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          New-Item -ItemType Directory -Path release -Force
+          Copy-Item target/release/decrypt.exe release/
+          Copy-Item target/release/decrypt.dll release/
+          Copy-Item target/release/launcher.exe release/
+          Compress-Archive -Path release/* -DestinationPath "release/Decrypt-v$VERSION.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
