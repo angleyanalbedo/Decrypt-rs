@@ -120,6 +120,10 @@ class MainWindow {open
         label {免责声明}
         xywh {5 285 100 25} box NO_BOX labelcolor 4
       }
+      Fl_Button bn_viewer {
+        label {内置查看器}
+        xywh {200 285 100 25}
+      }
       Fl_Button bn_about {
         label {关于本程序...}
         xywh {395 285 100 25} box NO_BOX labelcolor 4
