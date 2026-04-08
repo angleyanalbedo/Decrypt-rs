@@ -138,15 +138,19 @@ class LauncherWindow {open
   } {
     Fl_Window launcher_win {
       label Launcher open selected
-      xywh {660 566 500 100} type Double visible
+      xywh {660 566 520 70} type Double visible
     } {
-      Fl_Input en_ps_name {
-        label {进程名}
-        tooltip {请输入解密程序启动进程名称} xywh {80 30 300 40}
+      Fl_Input en_exe_path {
+        label {程序路径}
+        tooltip {EXE程序路径，点击浏览选择} xywh {100 20 280 28}
       }
-      Fl_Button bn_ps_new {
+      Fl_Button bn_browse {
+        label {浏览}
+        tooltip {选择EXE程序} xywh {385 20 60 28}
+      }
+      Fl_Button bn_start {
         label {启动}
-        xywh {385 30 60 40}
+        xywh {450 20 60 28}
       }
     }
   }
