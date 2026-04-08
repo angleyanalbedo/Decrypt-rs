@@ -1,0 +1,46 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送v开头的tag时触发，比如v1.0.0、v5.2.1
+
+jobs:
+  build:
+    runs-on: windows-latest
+    name: Build Windows Release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build release version
+        run: cargo build --release
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          mkdir -p release
+          cp target/release/decrypt.exe release/
+          cp target/release/decrypt.dll release/
+          cp target/release/launcher.exe release/
+          cd release
+          zip -r "Decrypt-v${VERSION}.zip" .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/Decrypt-v*.zip
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
