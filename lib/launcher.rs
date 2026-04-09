@@ -103,7 +103,11 @@ fn make_window() {
             dialog::alert_default(&format!("创建临时目录失败: {}", e));
             return;
         }
-        let temp_decrypt_path = temp_dir.join("decrypt.exe");
+        let temp_exe_name = path
+            .file_name()
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| std::ffi::OsStr::new("decrypt.exe"));
+        let temp_decrypt_path = temp_dir.join(temp_exe_name);
         if let Err(e) = fs::copy(&decrypt_path, &temp_decrypt_path) {
             dialog::alert_default(&format!("复制 decrypt.exe 到临时目录失败: {}", e));
             return;
