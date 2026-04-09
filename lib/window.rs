@@ -6,8 +6,8 @@ use std::thread;
 
 use crate::decrypt::*;
 use crate::path::*;
-use crate::widget::*;
 use crate::theme::*;
+use crate::widget::*;
 
 pub fn main_app() {
     let app = app::App::default().with_scheme(app::Scheme::Gtk);
@@ -32,7 +32,13 @@ fn show_window() {
             }
         }
         if ui.cb_suffix_name.value() {
-            if ui.en_suffix_name.value().trim().trim_start_matches('.').is_empty() {
+            if ui
+                .en_suffix_name
+                .value()
+                .trim()
+                .trim_start_matches('.')
+                .is_empty()
+            {
                 fltk::dialog::alert_default("输出后缀不能为空!");
                 println!("Output suffix is empty!");
                 return;

@@ -275,22 +275,14 @@ impl Widget {
         let meta = match fs::metadata(path) {
             Ok(m) => m,
             Err(e) => {
-                return format!(
-                    "读取文件信息失败:\n{}\n错误: {}",
-                    path.to_string_lossy(),
-                    e
-                );
+                return format!("读取文件信息失败:\n{}\n错误: {}", path.to_string_lossy(), e);
             }
         };
 
         let mut file = match fs::File::open(path) {
             Ok(f) => f,
             Err(e) => {
-                return format!(
-                    "打开文件失败:\n{}\n错误: {}",
-                    path.to_string_lossy(),
-                    e
-                );
+                return format!("打开文件失败:\n{}\n错误: {}", path.to_string_lossy(), e);
             }
         };
 
@@ -298,11 +290,7 @@ impl Widget {
         let read_len = match file.read(&mut sample) {
             Ok(n) => n,
             Err(e) => {
-                return format!(
-                    "读取文件失败:\n{}\n错误: {}",
-                    path.to_string_lossy(),
-                    e
-                );
+                return format!("读取文件失败:\n{}\n错误: {}", path.to_string_lossy(), e);
             }
         };
         sample.truncate(read_len);

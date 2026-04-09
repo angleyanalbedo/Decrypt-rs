@@ -85,14 +85,7 @@ pub fn execute_decrypt(
         if save_orig {
             let dst = with_output_extension(iter, output_ext);
             print!("Processing file: {:?}\n", iter);
-            if write_file(
-                iter,
-                &dst,
-                ext_name,
-                backup_orig,
-                save_orig,
-                should_stop,
-            ) {
+            if write_file(iter, &dst, ext_name, backup_orig, save_orig, should_stop) {
                 processed += 1.0;
             } else {
                 let pbar = widget.window.p_bar.clone();
