@@ -1,6 +1,8 @@
+use pelite::PeFile;
 use std::fs::read;
 use std::path::Path;
-use pelite::PeFile;
+#[cfg(windows)]
+use std::{ffi::c_void, os::windows::ffi::OsStrExt, ptr};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,6 +15,9 @@ pub enum PeModifyError {
     FindError(#[from] pelite::resources::FindError),
     #[error("未找到版本信息资源")]
     VersionInfoNotFound,
+    #[cfg(windows)]
+    #[error("Windows API调用失败: {0}")]
+    WindowsApi(&'static str),
 }
 
 /// PE版本元数据配置
@@ -61,18 +66,16 @@ pub fn read_pe_version_info(
     let mut metadata = VersionMetadata::default();
 
     // pelite 0.10 简化读取，默认读取所有字符串
-    version_info.strings(Default::default(), |key, value| {
-        match key {
-            "CompanyName" => metadata.company_name = Some(value.to_string()),
-            "FileDescription" => metadata.file_description = Some(value.to_string()),
-            "FileVersion" => metadata.file_version = Some(value.to_string()),
-            "InternalName" => metadata.internal_name = Some(value.to_string()),
-            "LegalCopyright" => metadata.legal_copyright = Some(value.to_string()),
-            "OriginalFilename" => metadata.original_filename = Some(value.to_string()),
-            "ProductName" => metadata.product_name = Some(value.to_string()),
-            "ProductVersion" => metadata.product_version = Some(value.to_string()),
-            _ => {}
-        }
+    version_info.strings(Default::default(), |key, value| match key {
+        "CompanyName" => metadata.company_name = Some(value.to_string()),
+        "FileDescription" => metadata.file_description = Some(value.to_string()),
+        "FileVersion" => metadata.file_version = Some(value.to_string()),
+        "InternalName" => metadata.internal_name = Some(value.to_string()),
+        "LegalCopyright" => metadata.legal_copyright = Some(value.to_string()),
+        "OriginalFilename" => metadata.original_filename = Some(value.to_string()),
+        "ProductName" => metadata.product_name = Some(value.to_string()),
+        "ProductVersion" => metadata.product_version = Some(value.to_string()),
+        _ => {}
     });
 
     Ok(metadata)
@@ -84,7 +87,133 @@ pub fn modify_pe_version_info(
     output_path: impl AsRef<Path>,
     _metadata: &VersionMetadata,
 ) -> Result<(), PeModifyError> {
-    // 先简单复制文件，修改功能后续用Windows API实现
-    std::fs::copy(input_path, output_path)?;
+    #[cfg(windows)]
+    {
+        update_version_resource_from_file(input_path.as_ref(), output_path.as_ref())?;
+        return Ok(());
+    }
+
+    #[cfg(not(windows))]
+    {
+        // 非 Windows 平台回退为复制
+        std::fs::copy(input_path, output_path)?;
+        return Ok(());
+    }
+}
+
+#[cfg(windows)]
+fn to_wide(path: &Path) -> Vec<u16> {
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+#[cfg(windows)]
+fn update_version_resource_from_file(src_exe: &Path, dst_exe: &Path) -> Result<(), PeModifyError> {
+    const RT_VERSION: usize = 16;
+    const DEFAULT_LANG: u16 = 0x0409;
+
+    let src_w = to_wide(src_exe);
+    let dst_w = to_wide(dst_exe);
+
+    let mut handle = 0u32;
+    let size = unsafe { GetFileVersionInfoSizeW(src_w.as_ptr(), &mut handle) };
+    if size == 0 {
+        return Err(PeModifyError::WindowsApi("GetFileVersionInfoSizeW"));
+    }
+
+    let mut version_block = vec![0u8; size as usize];
+    let ok = unsafe {
+        GetFileVersionInfoW(
+            src_w.as_ptr(),
+            0,
+            size,
+            version_block.as_mut_ptr().cast::<c_void>(),
+        )
+    };
+    if ok == 0 {
+        return Err(PeModifyError::WindowsApi("GetFileVersionInfoW"));
+    }
+
+    let mut trans_ptr: *mut c_void = ptr::null_mut();
+    let mut trans_len = 0u32;
+    let trans_key: Vec<u16> = "\\VarFileInfo\\Translation\0".encode_utf16().collect();
+    let lang = unsafe {
+        if VerQueryValueW(
+            version_block.as_mut_ptr().cast::<c_void>(),
+            trans_key.as_ptr(),
+            &mut trans_ptr,
+            &mut trans_len,
+        ) != 0
+            && !trans_ptr.is_null()
+            && trans_len >= 4
+        {
+            *(trans_ptr.cast::<u16>())
+        } else {
+            DEFAULT_LANG
+        }
+    };
+
+    let update = unsafe { BeginUpdateResourceW(dst_w.as_ptr(), 0) };
+    if update.is_null() {
+        return Err(PeModifyError::WindowsApi("BeginUpdateResourceW"));
+    }
+
+    let update_ok = unsafe {
+        UpdateResourceW(
+            update,
+            RT_VERSION as *const u16,
+            1 as *const u16,
+            lang,
+            version_block.as_mut_ptr().cast::<c_void>(),
+            size,
+        )
+    };
+    if update_ok == 0 {
+        unsafe {
+            EndUpdateResourceW(update, 1);
+        }
+        return Err(PeModifyError::WindowsApi("UpdateResourceW"));
+    }
+
+    let end_ok = unsafe { EndUpdateResourceW(update, 0) };
+    if end_ok == 0 {
+        return Err(PeModifyError::WindowsApi("EndUpdateResourceW"));
+    }
+
     Ok(())
+}
+
+#[cfg(windows)]
+#[link(name = "version")]
+unsafe extern "system" {
+    fn GetFileVersionInfoSizeW(lptstrfilename: *const u16, lpdwhandle: *mut u32) -> u32;
+    fn GetFileVersionInfoW(
+        lptstrfilename: *const u16,
+        dwhandle: u32,
+        dwlen: u32,
+        lpdata: *mut c_void,
+    ) -> i32;
+    fn VerQueryValueW(
+        pblock: *mut c_void,
+        lpsubblock: *const u16,
+        lplpbuffer: *mut *mut c_void,
+        pulen: *mut u32,
+    ) -> i32;
+}
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    fn BeginUpdateResourceW(pfilename: *const u16, bdeleteexistingresources: i32) -> *mut c_void;
+    fn UpdateResourceW(
+        hupdate: *mut c_void,
+        lptype: *const u16,
+        lpname: *const u16,
+        wlanguage: u16,
+        lpdata: *mut c_void,
+        cbdata: u32,
+    ) -> i32;
+    fn EndUpdateResourceW(hupdate: *mut c_void, fdiscard: i32) -> i32;
 }
